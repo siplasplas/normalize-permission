@@ -12,6 +12,7 @@ namespace fs = std::filesystem;
 int beforePerm = 0, afterPerm = 0;
 bool recursive = false;
 bool dry = false;
+bool sh = false;
 
 bool needChange(const string& path) {
     const char *cpath = path.c_str();
@@ -21,7 +22,7 @@ bool needChange(const string& path) {
     return perm == beforePerm;
 }
 
-void changePerm(const string& path, bool isDir) {
+void changePerm(const string& path) {
     const char *cpath = path.c_str();
     struct stat st;
     if(stat(cpath, &st)) return;
@@ -33,28 +34,31 @@ void changePerm(const string& path, bool isDir) {
 void listDirectory(string currentDir) {
     fs::path dirPath(currentDir);
     string pwd = canonical(dirPath).string();
-    std::vector<string> fileNames;
-    std::vector<string> dirNames;
+    std::vector<fs::path> fileNames;
+    std::vector<fs::path> dirNames;
     for (const auto &file: fs::directory_iterator(pwd)) {
-        string name = file.path().filename().string();
+        auto fileName = file.path().filename();
         if (file.is_directory())
-            dirNames.push_back(name);
+            dirNames.push_back(fileName);
         else
-            fileNames.push_back(name);
+            fileNames.push_back(fileName);
     }
     std::sort(dirNames.begin(), dirNames.end());
     std::sort(fileNames.begin(), fileNames.end());
-    for (const string& name: fileNames) {
-        string path =  pwd+ "/" + name;
+    for (const fs::path& fileName: fileNames) {
+        fs::path path =  pwd / fileName;
+        fs::path extension = fileName.extension();
+        if (sh && extension == ".sh")
+            continue;
         if (needChange(path)) {
-            cout << path << endl;
+            cout << path.string() << endl;
             if (!dry)
-                changePerm(path, false);
+                changePerm(path);
         }
     }
     if (recursive)
-    for (const string& name: dirNames) {
-        string path =  pwd+ "/" + name;
+    for (const fs::path& dirName: dirNames) {
+        fs::path path =  pwd / dirName;
         listDirectory(path);
     }
 }
@@ -64,7 +68,8 @@ void help() {
     cout << "call: normalizeAttr octBefore octAfter" << endl;
     cout << "-r: recursive" << endl;
     cout << "-dry: only output names, not change" << endl;
-    cout << "example: ~/normalizeAttr 755 644 -r -dry" << endl;
+    cout << "-sh: without *.sh files" << endl;
+    cout << "example: ~/normalizeAttr 755 664 -r -dry -sh" << endl;
 }
 
 bool processParameters(int argc, char ** argv) {
@@ -76,6 +81,8 @@ bool processParameters(int argc, char ** argv) {
                 recursive = true;
             else if (arg == "-dry")
                 dry = true;
+            else if (arg == "-sh")
+                sh = true;
             else {
                 cout << "unknown option: " << arg << endl;
                 nErrors++;
